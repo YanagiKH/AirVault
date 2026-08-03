@@ -4,12 +4,12 @@ plugins {
 
 android {
     namespace = "io.airvault.mobile"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "io.airvault.mobile"
         minSdk = 33
-        targetSdk = 35
+        targetSdk = 36
         versionCode = providers.gradleProperty("AIRVAULT_VERSION_CODE").getOrElse("1").toInteger()
         versionName = providers.gradleProperty("AIRVAULT_VERSION_NAME").getOrElse("0.1.0")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
