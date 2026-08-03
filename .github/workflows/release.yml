@@ -1,0 +1,200 @@
+name: Build signed release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-tag:
+    name: Validate release tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require semantic version tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: '[[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]'
+
+  desktop:
+    name: Desktop ${{ matrix.platform }}
+    needs: validate-tag
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Windows
+            os: windows-2025
+            command: package:windows
+          - platform: Linux
+            os: ubuntu-24.04
+            command: package:linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    environment: release
+    env:
+      RELEASE_VERSION: ${{ github.ref_name }}
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.18.1
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply tag version
+        shell: bash
+        run: npm version "${RELEASE_VERSION#v}" --workspaces --include-workspace-root --no-git-tag-version
+      - name: Validate Windows signing configuration
+        if: matrix.platform == 'Windows'
+        shell: bash
+        run: |
+          test -n "${CSC_LINK:-}" || { echo "CSC_LINK is required in the release environment"; exit 1; }
+          test -n "${CSC_KEY_PASSWORD:-}" || { echo "CSC_KEY_PASSWORD is required in the release environment"; exit 1; }
+      - name: Package desktop installer
+        run: npm run ${{ matrix.command }} -w @airvault/desktop
+      - name: Upload desktop package
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: apps/desktop/release/*
+          if-no-files-found: error
+          compression-level: 0
+
+  android:
+    name: Signed Android APK
+    needs: validate-tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    environment: release
+    env:
+      KEYSTORE_BASE64: ${{ secrets.AIRVAULT_ANDROID_KEYSTORE_BASE64 }}
+      ORG_GRADLE_PROJECT_AIRVAULT_KEYSTORE_PASSWORD: ${{ secrets.AIRVAULT_ANDROID_KEYSTORE_PASSWORD }}
+      ORG_GRADLE_PROJECT_AIRVAULT_KEY_ALIAS: ${{ secrets.AIRVAULT_ANDROID_KEY_ALIAS }}
+      ORG_GRADLE_PROJECT_AIRVAULT_KEY_PASSWORD: ${{ secrets.AIRVAULT_ANDROID_KEY_PASSWORD }}
+      RELEASE_VERSION: ${{ github.ref_name }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2 # v5
+        with:
+          gradle-version: "8.13"
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+      - name: Restore protected signing key
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" || { echo "AIRVAULT_ANDROID_KEYSTORE_BASE64 is required"; exit 1; }
+          test -n "$ORG_GRADLE_PROJECT_AIRVAULT_KEYSTORE_PASSWORD" || exit 1
+          test -n "$ORG_GRADLE_PROJECT_AIRVAULT_KEY_ALIAS" || exit 1
+          test -n "$ORG_GRADLE_PROJECT_AIRVAULT_KEY_PASSWORD" || exit 1
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/airvault-release.jks"
+          echo "ORG_GRADLE_PROJECT_AIRVAULT_KEYSTORE_FILE=$RUNNER_TEMP/airvault-release.jks" >> "$GITHUB_ENV"
+      - name: Build signed release APK
+        run: |
+          set -euo pipefail
+          VERSION="${RELEASE_VERSION#v}"
+          gradle -p apps/android clean lintRelease assembleRelease --no-daemon \
+            -PAIRVAULT_VERSION_NAME="$VERSION" \
+            -PAIRVAULT_VERSION_CODE="$GITHUB_RUN_NUMBER"
+          mkdir -p release
+          cp apps/android/app/build/outputs/apk/release/app-release.apk "release/AirVault-$VERSION-android.apk"
+      - name: Upload Android package
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: android
+          path: release/*.apk
+          if-no-files-found: error
+          compression-level: 0
+
+  native:
+    name: Native core ${{ matrix.platform }}
+    needs: validate-tag
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            os: windows-2025
+          - platform: linux-x86_64
+            os: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Configure and build
+        run: |
+          cmake -S native/core -B native/core/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=native/core/stage
+          cmake --build native/core/build --config Release --parallel
+          ctest --test-dir native/core/build -C Release --output-on-failure
+          cmake --install native/core/build --config Release
+      - name: Archive native package
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${RELEASE_VERSION#v}"
+          mkdir -p release
+          cmake -E tar cf "release/AirVault-$VERSION-native-$PLATFORM.zip" --format=zip native/core/stage
+      - name: Upload native package
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: native-${{ matrix.platform }}
+          path: release/*.zip
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    name: Publish GitHub Release
+    needs: [desktop, android, native]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+      - name: Attest release artifacts
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
+        with:
+          subject-path: dist/**
+      - name: Publish immutable tag release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "AirVault $GITHUB_REF_NAME"

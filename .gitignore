@@ -1,0 +1,16 @@
+node_modules/
+dist/
+release/
+coverage/
+*.log
+*.tmp
+*.airvault-part
+.DS_Store
+.idea/
+.vscode/
+.gradle/
+local.properties
+apps/android/app/build/
+apps/android/build/
+native/core/build/
+security-scan-artifacts/

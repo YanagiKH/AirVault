@@ -1,0 +1,14 @@
+{
+  "name": "@airvault/protocol",
+  "version": "0.1.0",
+  "description": "AirVault authenticated E2EE transfer protocol",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  }
+}

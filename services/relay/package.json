@@ -1,0 +1,21 @@
+{
+  "name": "@airvault/relay",
+  "version": "0.1.0",
+  "description": "Content-blind AirVault signaling and ciphertext relay",
+  "main": "dist/index.js",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@airvault/protocol": "0.1.0",
+    "ws": "8.21.1"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.1"
+  }
+}

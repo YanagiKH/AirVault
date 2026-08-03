@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.AirVault" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#081421</item>
+        <item name="android:navigationBarColor">#081421</item>
+        <item name="android:windowBackground">#07111E</item>
+        <item name="android:colorAccent">#49D9E8</item>
+    </style>
+</resources>

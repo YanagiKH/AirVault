@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 240" role="img" aria-labelledby="title description">
+  <title id="title">AirVault</title>
+  <desc id="description">AirVault wordmark with a secure encrypted transfer symbol</desc>
+  <defs>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#49D9E8"/>
+      <stop offset="1" stop-color="#5D8BFF"/>
+    </linearGradient>
+    <filter id="g"><feGaussianBlur stdDeviation="10"/></filter>
+  </defs>
+  <rect width="960" height="240" rx="34" fill="#07111E"/>
+  <circle cx="120" cy="120" r="74" fill="#3BCFE4" opacity=".25" filter="url(#g)"/>
+  <path d="M120 38 184 70v48c0 41-25 70-64 86-39-16-64-45-64-86V70z" fill="url(#a)"/>
+  <path d="M94 116h52v47H94z" fill="#07111E" rx="9"/>
+  <path d="M104 116V99a16 16 0 0 1 32 0v17" fill="none" stroke="#07111E" stroke-width="10" stroke-linecap="round"/>
+  <path d="m109 140 8 8 17-19" fill="none" stroke="#49D9E8" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="226" y="138" fill="#E7F2FF" font-family="Inter,Segoe UI,sans-serif" font-size="75" font-weight="800" letter-spacing="-2">AirVault</text>
+  <text x="231" y="174" fill="#8BA0BA" font-family="Inter,Segoe UI,sans-serif" font-size="20" letter-spacing="5">PRIVATE TRANSFER · VERIFIED END TO END</text>
+</svg>

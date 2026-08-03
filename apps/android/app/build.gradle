@@ -1,0 +1,60 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "io.airvault.mobile"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "io.airvault.mobile"
+        minSdk 33
+        targetSdk 35
+        versionCode (project.findProperty("AIRVAULT_VERSION_CODE") ?: "1").toInteger()
+        versionName (project.findProperty("AIRVAULT_VERSION_NAME") ?: "0.1.0")
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        release {
+            if (project.hasProperty("AIRVAULT_KEYSTORE_FILE")) {
+                storeFile file(project.property("AIRVAULT_KEYSTORE_FILE"))
+                storePassword project.property("AIRVAULT_KEYSTORE_PASSWORD")
+                keyAlias project.property("AIRVAULT_KEY_ALIAS")
+                keyPassword project.property("AIRVAULT_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            if (project.hasProperty("AIRVAULT_KEYSTORE_FILE")) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    packaging {
+        resources.excludes += ["META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*"]
+    }
+}
+
+dependencies {
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    implementation "com.google.zxing:core:3.5.3"
+    implementation "com.journeyapps:zxing-android-embedded:4.3.0"
+    implementation "androidx.documentfile:documentfile:1.0.1"
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "org.json:json:20260719"
+}

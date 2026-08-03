@@ -1,0 +1,3 @@
+-keepattributes Signature,*Annotation*
+-keep class com.google.zxing.** { *; }
+-dontwarn org.codehaus.mojo.animal_sniffer.**

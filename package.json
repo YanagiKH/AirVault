@@ -1,0 +1,29 @@
+{
+  "name": "airvault",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Secure end-to-end encrypted file transfer for desktop and mobile devices",
+  "license": "Apache-2.0",
+  "workspaces": [
+    "packages/*",
+    "apps/desktop",
+    "services/relay"
+  ],
+  "scripts": {
+    "build": "npm run build -w @airvault/protocol && npm run build -w @airvault/relay && npm run build -w @airvault/desktop",
+    "test": "npm run test -w @airvault/protocol && npm run test -w @airvault/relay",
+    "typecheck": "npm run typecheck -w @airvault/protocol && npm run build -w @airvault/protocol && npm run typecheck -w @airvault/relay && npm run typecheck -w @airvault/desktop",
+    "verify": "npm run typecheck && npm test && npm run build",
+    "start:relay": "npm run dev -w @airvault/relay",
+    "start:desktop": "npm run dev -w @airvault/desktop"
+  },
+  "devDependencies": {
+    "@types/node": "24.1.0",
+    "tsx": "4.20.3",
+    "typescript": "5.8.3"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  }
+}

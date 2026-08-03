@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>AirVault</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">A</span><div><strong>AirVault</strong><small>Private transfer, verified end to end</small></div></div>
+    <div class="relay-badge"><span id="relay-status" data-status="disconnected">disconnected</span></div>
+  </header>
+  <main>
+    <section class="hero card">
+      <div><span class="eyebrow">THIS DEVICE</span><h1>Ready to receive securely</h1><p>Your ID is derived from this device's Ed25519 identity key. Share it with devices you trust.</p></div>
+      <div class="device-id-box"><code id="device-id">Loading…</code><button id="copy-id">Copy ID</button></div>
+    </section>
+    <div class="workspace-grid">
+      <section class="card send-card">
+        <div class="section-title"><div><span class="step">1</span><h2>Select files</h2></div><span class="privacy-pill">Encrypted locally</span></div>
+        <div id="drop-zone" class="drop-zone"><div class="drop-icon">⇧</div><strong id="drop-copy">Drop files here or browse</strong><span>Multiple files, up to 100 GiB per transfer</span><button id="browse-files">Browse files</button></div>
+        <ul id="file-list" class="file-list"></ul>
+        <div class="send-controls"><label for="peer-select">Saved destination</label><select id="peer-select"><option value="">Choose a saved device</option></select><button id="send-button" class="primary">Create secure transfer</button></div>
+      </section>
+      <section class="card devices-card">
+        <div class="section-title"><div><span class="step">2</span><h2>Saved devices</h2></div></div>
+        <form id="add-peer-form" class="peer-form"><input id="peer-id" autocomplete="off" placeholder="AV-XXXXX-XXXXX-XXXXX-XXXXX" required><input id="peer-name" maxlength="64" placeholder="Device name"><button type="submit">Save device</button></form>
+        <div id="peer-list" class="peer-list"></div>
+      </section>
+    </div>
+    <section class="card activity-card"><div><span class="eyebrow">TRANSFER ACTIVITY</span><strong id="activity-text">No active transfers</strong></div><progress id="progress" max="100" value="0"></progress></section>
+    <details class="settings card"><summary>Relay and advanced settings</summary><div class="settings-row"><label for="relay-url">Encrypted relay URL</label><input id="relay-url" spellcheck="false"><button id="save-relay">Apply</button></div><p>Remote relays must use TLS (<code>wss://</code>). The relay routes ciphertext and cannot read filenames or file contents.</p></details>
+  </main>
+
+  <div id="send-modal" class="modal"><div class="modal-card"><button id="close-send-modal" class="modal-close">×</button><span class="eyebrow">ONE-TIME AUTHORIZATION</span><h2>Verify the receiving device</h2><p>Ask the receiver to enter this PIN, or scan the QR code with AirVault mobile.</p><div id="pin-code" class="pin-code">000 000</div><img id="qr-image" class="qr-image" alt="AirVault transfer authorization QR code"><p id="offer-files" class="muted"></p><div class="security-note">The PIN expires with this transfer. Never send it through the same untrusted channel as the files.</div></div></div>
+  <div id="receive-auth-modal" class="modal"><div class="modal-card"><span class="eyebrow">INCOMING TRANSFER</span><h2>Authorize sender</h2><p id="incoming-copy"></p><form id="authorize-form"><input id="incoming-transfer" type="hidden"><input id="authorization" autocomplete="one-time-code" inputmode="numeric" placeholder="6-digit PIN or AirVault QR link" required><div class="modal-actions"><button id="cancel-auth" type="button">Decline</button><button class="primary" type="submit">Verify and scan</button></div></form></div></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="renderer.js"></script>
+</body>
+</html>

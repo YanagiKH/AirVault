@@ -1,0 +1,45 @@
+{
+  "name": "@airvault/desktop",
+  "version": "0.1.0",
+  "description": "AirVault desktop client",
+  "main": "dist/main/index.js",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "npm run build && electron .",
+    "package:windows": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "package:linux": "npm run build && electron-builder --linux AppImage deb --x64 --publish never"
+  },
+  "dependencies": {
+    "@airvault/protocol": "0.1.0",
+    "qrcode": "1.5.4",
+    "ws": "8.21.1"
+  },
+  "devDependencies": {
+    "@types/qrcode": "1.5.6",
+    "@types/ws": "8.18.1",
+    "electron": "43.2.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "io.airvault.desktop",
+    "productName": "AirVault",
+    "artifactName": "AirVault-${version}-${os}-${arch}.${ext}",
+    "asar": true,
+    "files": ["dist/**/*", "package.json"],
+    "directories": { "output": "release" },
+    "win": { "target": ["nsis"] },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "perMachine": false
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Network;Utility",
+      "synopsis": "Secure end-to-end encrypted file transfer"
+    }
+  }
+}
