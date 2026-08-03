@@ -3,47 +3,47 @@ plugins {
 }
 
 android {
-    namespace "io.airvault.mobile"
-    compileSdk 35
+    namespace = "io.airvault.mobile"
+    compileSdk = 35
 
     defaultConfig {
-        applicationId "io.airvault.mobile"
-        minSdk 33
-        targetSdk 35
-        versionCode (project.findProperty("AIRVAULT_VERSION_CODE") ?: "1").toInteger()
-        versionName (project.findProperty("AIRVAULT_VERSION_NAME") ?: "0.1.0")
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        applicationId = "io.airvault.mobile"
+        minSdk = 33
+        targetSdk = 35
+        versionCode = providers.gradleProperty("AIRVAULT_VERSION_CODE").getOrElse("1").toInteger()
+        versionName = providers.gradleProperty("AIRVAULT_VERSION_NAME").getOrElse("0.1.0")
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
         release {
             if (project.hasProperty("AIRVAULT_KEYSTORE_FILE")) {
-                storeFile file(project.property("AIRVAULT_KEYSTORE_FILE"))
-                storePassword project.property("AIRVAULT_KEYSTORE_PASSWORD")
-                keyAlias project.property("AIRVAULT_KEY_ALIAS")
-                keyPassword project.property("AIRVAULT_KEY_PASSWORD")
+                storeFile = file(project.property("AIRVAULT_KEYSTORE_FILE"))
+                storePassword = project.property("AIRVAULT_KEYSTORE_PASSWORD")
+                keyAlias = project.property("AIRVAULT_KEY_ALIAS")
+                keyPassword = project.property("AIRVAULT_KEY_PASSWORD")
             }
         }
     }
 
     buildTypes {
         debug {
-            applicationIdSuffix ".debug"
-            versionNameSuffix "-debug"
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
         }
         release {
-            minifyEnabled true
-            shrinkResources true
+            minifyEnabled = true
+            shrinkResources = true
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             if (project.hasProperty("AIRVAULT_KEYSTORE_FILE")) {
-                signingConfig signingConfigs.release
+                signingConfig = signingConfigs.release
             }
         }
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     packaging {
         resources.excludes += ["META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*"]
