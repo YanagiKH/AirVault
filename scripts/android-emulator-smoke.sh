@@ -13,7 +13,7 @@ collect_evidence() {
   adb exec-out screencap -p > "$EVIDENCE_DIR/screenshot.png" 2>/dev/null || true
   adb shell dumpsys activity activities > "$EVIDENCE_DIR/activity.txt" 2>&1 || true
   adb shell dumpsys package "$PACKAGE_NAME" > "$EVIDENCE_DIR/package.txt" 2>&1 || true
-  adb logcat -d -b main,system,crash -v threadtime > "$EVIDENCE_DIR/logcat.txt" 2>&1 || true
+  adb logcat -d -b main -b system -b crash -v threadtime > "$EVIDENCE_DIR/logcat.txt" 2>&1 || true
 }
 trap collect_evidence EXIT
 
@@ -66,7 +66,7 @@ grep -F 'text="AirVault"' "$EVIDENCE_DIR/window-before-assert.xml" >/dev/null
 grep -E 'text="AV-[A-Z2-7]{5}-[A-Z2-7]{5}-[A-Z2-7]{5}-[A-Z2-7]{5}"' \
   "$EVIDENCE_DIR/window-before-assert.xml" >/dev/null
 
-adb logcat -d -b main,system,crash -v threadtime > "$EVIDENCE_DIR/logcat-before-assert.txt"
+adb logcat -d -b main -b system -b crash -v threadtime > "$EVIDENCE_DIR/logcat-before-assert.txt"
 if grep -E "FATAL EXCEPTION|Process: ${PACKAGE_NAME}.*has died" "$EVIDENCE_DIR/logcat-before-assert.txt" >/dev/null; then
   echo "Crash evidence was found after launch" >&2
   exit 1
