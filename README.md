@@ -10,8 +10,6 @@
 
 AirVault is an open-source, cross-platform file-transfer application for Windows, Linux, Android phones, and Android tablets. It combines permanent device IDs with per-transfer PIN or QR approval, authenticated end-to-end encryption, a content-blind relay, safe file handling, and optional local malware scanning.
 
-The repository is an English-language monorepo built with TypeScript, JavaScript, Java, and C/C++.
-
 > [!IMPORTANT]
 > AirVault has extensive automated tests and defensive controls, but it has not yet completed an independent cryptographic audit. Review the [security guide](docs/SECURITY_GUIDE.md) and [threat model](docs/THREAT_MODEL.md) before high-risk deployment.
 

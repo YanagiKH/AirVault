@@ -298,7 +298,7 @@ jobs:
           REF_TYPE: ${{ github.ref_type }}
         run: |
           set -euo pipefail
-          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             echo "::notice::Release $RELEASE_TAG already exists and remains immutable."
             exit 0
           fi
@@ -308,5 +308,6 @@ jobs:
             tag_options=(--target "$GITHUB_SHA")
           fi
           gh release create "$RELEASE_TAG" dist/* "${tag_options[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
             --notes-file dist/ARTIFACT_SECURITY.md \
             --title "AirVault $RELEASE_TAG"
