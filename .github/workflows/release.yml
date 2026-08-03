@@ -67,7 +67,7 @@ jobs:
       - name: Package desktop installer
         run: npm run ${{ matrix.command }} -w @airvault/desktop
       - name: Upload desktop package
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desktop-${{ matrix.platform }}
           path: apps/desktop/release/*
@@ -120,7 +120,7 @@ jobs:
           mkdir -p release
           cp apps/android/app/build/outputs/apk/release/app-release.apk "release/AirVault-$VERSION-android.apk"
       - name: Upload Android package
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: android
           path: release/*.apk
@@ -162,7 +162,7 @@ jobs:
           mkdir -p release
           cmake -E tar cf "release/AirVault-$VERSION-native-$PLATFORM.zip" --format=zip native/core/stage
       - name: Upload native package
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-${{ matrix.platform }}
           path: release/*.zip
