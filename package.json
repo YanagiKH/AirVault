@@ -18,9 +18,9 @@
     "start:desktop": "npm run dev -w @airvault/desktop"
   },
   "devDependencies": {
-    "@types/node": "24.1.0",
-    "tsx": "4.20.3",
-    "typescript": "5.8.3"
+    "@types/node": "26.1.2",
+    "tsx": "4.23.1",
+    "typescript": "7.0.2"
   },
   "engines": {
     "node": ">=22.0.0",
