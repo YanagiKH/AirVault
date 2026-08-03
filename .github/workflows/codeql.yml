@@ -26,7 +26,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [javascript-typescript, java-kotlin, c-cpp]
+        include:
+          - language: javascript-typescript
+            build-mode: none
+          - language: java-kotlin
+            build-mode: manual
+          - language: c-cpp
+            build-mode: manual
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -54,7 +60,7 @@ jobs:
         uses: github/codeql-action/init@bce182f857edf1feab116e9795a3393d21977282 # v4
         with:
           languages: ${{ matrix.language }}
-          build-mode: manual
+          build-mode: ${{ matrix.build-mode }}
       - name: Build TypeScript
         if: matrix.language == 'javascript-typescript'
         run: |
