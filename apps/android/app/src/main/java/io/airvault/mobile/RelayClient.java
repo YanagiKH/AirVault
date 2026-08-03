@@ -2,14 +2,16 @@ package io.airvault.mobile;
 
 import org.json.JSONObject;
 
+import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.net.URI;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Locale;
-import java.util.Set;
+import java.net.UnknownHostException;
 import java.security.SecureRandom;
+import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
+import okhttp3.Dns;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -23,14 +25,22 @@ public final class RelayClient {
         void onError(String safeMessage);
     }
 
+    private static final Dns PUBLIC_ONLY_DNS = hostname -> {
+        List<InetAddress> addresses = Dns.SYSTEM.lookup(hostname);
+        for (InetAddress address : addresses) {
+            if (!isPublicInternetAddress(address)) {
+                throw new UnknownHostException("Relay resolved to a non-public network address");
+            }
+        }
+        return addresses;
+    };
+
     private final OkHttpClient client = new OkHttpClient.Builder()
+            .dns(PUBLIC_ONLY_DNS)
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.SECONDS)
             .pingInterval(30, TimeUnit.SECONDS)
             .build();
-    private static final Set<String> ALLOWED_RELAY_HOSTS = new HashSet<>(Arrays.asList(
-            "relay.example.com"
-    ));
     private final CryptoEngine.Identity identity;
     private final Listener listener;
     private WebSocket socket;
@@ -121,7 +131,7 @@ public final class RelayClient {
         socket = null;
     }
 
-    private static String requireSecureUrl(String value) {
+    static String requireSecureUrl(String value) {
         if (value == null) throw new IllegalArgumentException("Relay URL is required");
         String trimmed = value.trim();
         if (trimmed.isEmpty()) throw new IllegalArgumentException("Relay URL is required");
@@ -132,22 +142,50 @@ public final class RelayClient {
         } catch (IllegalArgumentException error) {
             throw new IllegalArgumentException("Relay URL is invalid", error);
         }
-
-        if (!"wss".equalsIgnoreCase(uri.getScheme())) {
+        if (uri.isOpaque() || !"wss".equalsIgnoreCase(uri.getScheme())) {
             throw new IllegalArgumentException("Android relays must use wss://");
         }
-        if (uri.getUserInfo() != null) {
-            throw new IllegalArgumentException("Relay URL must not include user info");
-        }
+        if (uri.getUserInfo() != null) throw new IllegalArgumentException("Relay URL must not include user info");
+        if (uri.getFragment() != null) throw new IllegalArgumentException("Relay URL must not include a fragment");
 
         String host = uri.getHost();
-        if (host == null || host.isEmpty()) {
-            throw new IllegalArgumentException("Relay URL host is required");
-        }
+        if (host == null || host.isBlank()) throw new IllegalArgumentException("Relay URL host is required");
         String normalizedHost = host.toLowerCase(Locale.US);
-        if (!ALLOWED_RELAY_HOSTS.contains(normalizedHost)) {
-            throw new IllegalArgumentException("Relay host is not authorized");
+        if (normalizedHost.equals("localhost")
+                || normalizedHost.endsWith(".localhost")
+                || normalizedHost.endsWith(".local")) {
+            throw new IllegalArgumentException("Relay URL must use a public host");
         }
-        return uri.toString();
+        return uri.normalize().toASCIIString();
+    }
+
+    static boolean isPublicInternetAddress(InetAddress address) {
+        if (address.isAnyLocalAddress()
+                || address.isLoopbackAddress()
+                || address.isLinkLocalAddress()
+                || address.isSiteLocalAddress()
+                || address.isMulticastAddress()) {
+            return false;
+        }
+
+        byte[] bytes = address.getAddress();
+        if (address instanceof Inet4Address) {
+            int first = bytes[0] & 0xff;
+            int second = bytes[1] & 0xff;
+            if (first == 0 || first == 10 || first == 127 || first >= 224) return false;
+            if (first == 100 && second >= 64 && second <= 127) return false;
+            if (first == 169 && second == 254) return false;
+            if (first == 172 && second >= 16 && second <= 31) return false;
+            if (first == 192 && (second == 0 || second == 168)) return false;
+            if (first == 198 && (second == 18 || second == 19)) return false;
+            return !(first == 198 && second == 51 && (bytes[2] & 0xff) == 100)
+                    && !(first == 203 && second == 0 && (bytes[2] & 0xff) == 113);
+        }
+
+        int first = bytes[0] & 0xff;
+        int second = bytes[1] & 0xff;
+        if ((first & 0xfe) == 0xfc) return false;
+        return !(first == 0x20 && second == 0x01
+                && (bytes[2] & 0xff) == 0x0d && (bytes[3] & 0xff) == 0xb8);
     }
 }

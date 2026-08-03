@@ -78,7 +78,7 @@ Malware scanning is defense in depth, not a guarantee that a file is harmless. K
 
 ## Relay requirements
 
-Production clients must use `wss://`. Terminate TLS 1.2 or newer at a maintained reverse proxy, prefer TLS 1.3, enable HSTS on related HTTPS endpoints, and do not log WebSocket payloads.
+Production clients must use `wss://`. The Android client rejects user-info and local hostnames, then rechecks every DNS answer at connection time and blocks loopback, private, link-local, multicast, documentation, carrier-grade NAT, and IPv6 ULA addresses. Self-hosted Android relays therefore need a publicly routable TLS endpoint. Terminate TLS 1.2 or newer at a maintained reverse proxy, prefer TLS 1.3, enable HSTS on related HTTPS endpoints, and do not log WebSocket payloads.
 
 Run the relay:
 
