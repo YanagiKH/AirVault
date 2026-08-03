@@ -2,6 +2,12 @@
   "name": "@airvault/desktop",
   "version": "0.1.0",
   "description": "AirVault desktop client",
+  "author": {
+    "name": "AirVault contributors",
+    "email": "142028490+YanagiKH@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/YanagiKH/AirVault",
+  "desktopName": "airvault",
   "main": "dist/main/index.js",
   "license": "Apache-2.0",
   "scripts": {
@@ -25,11 +31,21 @@
   "build": {
     "appId": "io.airvault.desktop",
     "productName": "AirVault",
+    "executableName": "airvault",
     "artifactName": "AirVault-${version}-${os}-${arch}.${ext}",
     "asar": true,
-    "files": ["dist/**/*", "package.json"],
-    "directories": { "output": "release" },
-    "win": { "target": ["nsis"] },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
@@ -37,8 +53,12 @@
       "perMachine": false
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Network;Utility",
+      "syncDesktopName": true,
       "synopsis": "Secure end-to-end encrypted file transfer"
     }
   }

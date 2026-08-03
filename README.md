@@ -66,6 +66,8 @@ The relay necessarily observes limited routing metadata: device IDs, connection 
 3. Verify the published SHA-256 checksum and GitHub artifact attestation.
 4. Run the installer and choose an installation directory.
 
+An asset ending in `-unsigned.exe` is an automated validation build without Authenticode signing. Use it only for testing; production releases should configure the protected Windows signing secrets described below.
+
 ### Linux
 
 Choose either release format:
@@ -88,6 +90,8 @@ sudo apt install ./AirVault-*-linux-x64.deb
 
 Google Play distribution can use the same Android App Bundle configuration; the repository release workflow publishes an APK for direct installation.
 
+An asset ending in `-android-debug.apk` uses the isolated `.debug` application ID and a CI debug certificate. It is installable for testing but is not a production update. Production APKs omit the `-debug` suffix and require the protected signing configuration in [docs/INSTALLATION.md](docs/INSTALLATION.md).
+
 ### Build the desktop application from source
 
 Requirements: Node.js 22 or newer, npm 10 or newer, and the platform packaging prerequisites listed by electron-builder.
@@ -109,7 +113,7 @@ npm run package:linux -w @airvault/desktop
 
 ### Build Android from source
 
-Requirements: JDK 17, Android SDK 35, Android Build Tools, and Gradle 8.13.
+Requirements: JDK 17, Android SDK 36, Android Build Tools, and Gradle 9.5.
 
 ```bash
 gradle -p apps/android assembleDebug

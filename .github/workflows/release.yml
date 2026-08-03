@@ -1,9 +1,22 @@
-name: Build signed release
+name: Build release artifacts
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*.*.*"
+    paths:
+      - ".github/workflows/release.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/set-release-version.mjs"
+      - "scripts/set-release-version.test.mjs"
+      - "apps/desktop/**"
+      - "apps/android/**"
+      - "packages/protocol/**"
+      - "native/core/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,14 +27,33 @@ concurrency:
 
 jobs:
   validate-tag:
-    name: Validate release tag
+    name: Resolve release version
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
     steps:
-      - name: Require semantic version tag
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve and validate semantic version
+        id: release
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: '[[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]'
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
+            VERSION="${REF_NAME#v}"
+          else
+            VERSION="$(node -p "require('./package.json').version")"
+            [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
   desktop:
     name: Desktop ${{ matrix.platform }}
@@ -40,7 +72,7 @@ jobs:
     timeout-minutes: 40
     environment: release
     env:
-      RELEASE_VERSION: ${{ github.ref_name }}
+      RELEASE_VERSION: ${{ needs.validate-tag.outputs.version }}
       CSC_LINK: ${{ secrets.CSC_LINK }}
       CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
     steps:
@@ -56,26 +88,50 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Apply tag version
-        shell: bash
-        run: npm version "${RELEASE_VERSION#v}" --workspaces --include-workspace-root --no-git-tag-version
-      - name: Validate Windows signing configuration
+        run: node scripts/set-release-version.mjs "$RELEASE_VERSION"
+      - name: Configure Windows signing
         if: matrix.platform == 'Windows'
         shell: bash
         run: |
-          test -n "${CSC_LINK:-}" || { echo "CSC_LINK is required in the release environment"; exit 1; }
-          test -n "${CSC_KEY_PASSWORD:-}" || { echo "CSC_KEY_PASSWORD is required in the release environment"; exit 1; }
+          set -euo pipefail
+          if [[ -n "${CSC_LINK:-}" && -n "${CSC_KEY_PASSWORD:-}" ]]; then
+            echo "AIRVAULT_WINDOWS_SIGNED=true" >> "$GITHUB_ENV"
+          elif [[ -z "${CSC_LINK:-}" && -z "${CSC_KEY_PASSWORD:-}" ]]; then
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "AIRVAULT_WINDOWS_SIGNED=false" >> "$GITHUB_ENV"
+            echo "::notice::Windows signing secrets are absent; producing an explicitly labelled unsigned validation installer."
+          else
+            echo "::error::CSC_LINK and CSC_KEY_PASSWORD must either both be configured or both be absent."
+            exit 1
+          fi
       - name: Package desktop installer
         run: npm run ${{ matrix.command }} -w @airvault/desktop
+      - name: Label unsigned Windows installer
+        if: matrix.platform == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${AIRVAULT_WINDOWS_SIGNED:-false}" == "false" ]]; then
+            shopt -s nullglob
+            installers=(apps/desktop/release/*.exe)
+            (( ${#installers[@]} > 0 )) || { echo "No Windows installer was produced"; exit 1; }
+            for installer in "${installers[@]}"; do
+              mv "$installer" "${installer%.exe}-unsigned.exe"
+            done
+          fi
       - name: Upload desktop package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desktop-${{ matrix.platform }}
-          path: apps/desktop/release/*
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
           if-no-files-found: error
           compression-level: 0
 
   android:
-    name: Signed Android APK
+    name: Android APK
     needs: validate-tag
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -85,7 +141,7 @@ jobs:
       ORG_GRADLE_PROJECT_AIRVAULT_KEYSTORE_PASSWORD: ${{ secrets.AIRVAULT_ANDROID_KEYSTORE_PASSWORD }}
       ORG_GRADLE_PROJECT_AIRVAULT_KEY_ALIAS: ${{ secrets.AIRVAULT_ANDROID_KEY_ALIAS }}
       ORG_GRADLE_PROJECT_AIRVAULT_KEY_PASSWORD: ${{ secrets.AIRVAULT_ANDROID_KEY_PASSWORD }}
-      RELEASE_VERSION: ${{ github.ref_name }}
+      RELEASE_VERSION: ${{ needs.validate-tag.outputs.version }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -101,24 +157,46 @@ jobs:
         with:
           gradle-version: "9.5.0"
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-      - name: Restore protected signing key
+      - name: Configure Android signing
         run: |
           set -euo pipefail
-          test -n "$KEYSTORE_BASE64" || { echo "AIRVAULT_ANDROID_KEYSTORE_BASE64 is required"; exit 1; }
-          test -n "$ORG_GRADLE_PROJECT_AIRVAULT_KEYSTORE_PASSWORD" || exit 1
-          test -n "$ORG_GRADLE_PROJECT_AIRVAULT_KEY_ALIAS" || exit 1
-          test -n "$ORG_GRADLE_PROJECT_AIRVAULT_KEY_PASSWORD" || exit 1
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/airvault-release.jks"
-          echo "ORG_GRADLE_PROJECT_AIRVAULT_KEYSTORE_FILE=$RUNNER_TEMP/airvault-release.jks" >> "$GITHUB_ENV"
-      - name: Build signed release APK
+          values=(
+            "$KEYSTORE_BASE64"
+            "$ORG_GRADLE_PROJECT_AIRVAULT_KEYSTORE_PASSWORD"
+            "$ORG_GRADLE_PROJECT_AIRVAULT_KEY_ALIAS"
+            "$ORG_GRADLE_PROJECT_AIRVAULT_KEY_PASSWORD"
+          )
+          configured=0
+          for value in "${values[@]}"; do
+            [[ -n "$value" ]] && configured=$((configured + 1))
+          done
+          if (( configured == 4 )); then
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/airvault-release.jks"
+            echo "ORG_GRADLE_PROJECT_AIRVAULT_KEYSTORE_FILE=$RUNNER_TEMP/airvault-release.jks" >> "$GITHUB_ENV"
+            echo "AIRVAULT_ANDROID_SIGNED=true" >> "$GITHUB_ENV"
+          elif (( configured == 0 )); then
+            echo "AIRVAULT_ANDROID_SIGNED=false" >> "$GITHUB_ENV"
+            echo "::notice::Android signing secrets are absent; producing an explicitly labelled debug-signed validation APK."
+          else
+            echo "::error::All four AIRVAULT_ANDROID signing secrets must be configured together."
+            exit 1
+          fi
+      - name: Build Android APK
         run: |
           set -euo pipefail
-          VERSION="${RELEASE_VERSION#v}"
-          gradle -p apps/android clean lintRelease assembleRelease --no-daemon \
-            -PAIRVAULT_VERSION_NAME="$VERSION" \
-            -PAIRVAULT_VERSION_CODE="$GITHUB_RUN_NUMBER"
+          VERSION="$RELEASE_VERSION"
           mkdir -p release
-          cp apps/android/app/build/outputs/apk/release/app-release.apk "release/AirVault-$VERSION-android.apk"
+          if [[ "$AIRVAULT_ANDROID_SIGNED" == "true" ]]; then
+            gradle -p apps/android clean lintRelease testReleaseUnitTest assembleRelease --no-daemon \
+              -PAIRVAULT_VERSION_NAME="$VERSION" \
+              -PAIRVAULT_VERSION_CODE="$GITHUB_RUN_NUMBER"
+            cp apps/android/app/build/outputs/apk/release/app-release.apk "release/AirVault-$VERSION-android.apk"
+          else
+            gradle -p apps/android clean lintDebug testDebugUnitTest assembleDebug --no-daemon \
+              -PAIRVAULT_VERSION_NAME="$VERSION" \
+              -PAIRVAULT_VERSION_CODE="$GITHUB_RUN_NUMBER"
+            cp apps/android/app/build/outputs/apk/debug/app-debug.apk "release/AirVault-$VERSION-android-debug.apk"
+          fi
       - name: Upload Android package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -155,10 +233,10 @@ jobs:
         shell: bash
         env:
           PLATFORM: ${{ matrix.platform }}
-          RELEASE_VERSION: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ needs.validate-tag.outputs.version }}
         run: |
           set -euo pipefail
-          VERSION="${RELEASE_VERSION#v}"
+          VERSION="$RELEASE_VERSION"
           mkdir -p release
           cmake -E tar cf "release/AirVault-$VERSION-native-$PLATFORM.zip" --format=zip native/core/stage
       - name: Upload native package
@@ -171,7 +249,7 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    needs: [desktop, android, native]
+    needs: [validate-tag, desktop, android, native]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: release
@@ -185,6 +263,24 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Write artifact security notice
+        run: |
+          set -euo pipefail
+          {
+            echo "# Artifact security status"
+            echo
+            if compgen -G "dist/*-unsigned.exe" > /dev/null; then
+              echo "- Windows assets ending in \`-unsigned.exe\` are validation installers without Authenticode signing."
+            else
+              echo "- The Windows installer was built with the protected release signing configuration."
+            fi
+            if compgen -G "dist/*-android-debug.apk" > /dev/null; then
+              echo "- Android assets ending in \`-android-debug.apk\` use a runner-generated debug certificate and are for testing only."
+            else
+              echo "- The Android APK was built with the protected release signing configuration."
+            fi
+            echo "- Verify every downloaded file against \`SHA256SUMS.txt\` and the GitHub artifact attestation."
+          } > dist/ARTIFACT_SECURITY.md
       - name: Generate checksums
         run: |
           set -euo pipefail
@@ -197,4 +293,19 @@ jobs:
       - name: Publish immutable tag release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "AirVault $GITHUB_REF_NAME"
+          RELEASE_TAG: ${{ needs.validate-tag.outputs.tag }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            echo "::notice::Release $RELEASE_TAG already exists and remains immutable."
+            exit 0
+          fi
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            tag_options=(--verify-tag)
+          else
+            tag_options=(--target "$GITHUB_SHA")
+          fi
+          gh release create "$RELEASE_TAG" dist/* "${tag_options[@]}" \
+            --notes-file dist/ARTIFACT_SECURITY.md \
+            --title "AirVault $RELEASE_TAG"
