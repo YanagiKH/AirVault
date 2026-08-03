@@ -33,16 +33,21 @@ import org.json.JSONArray;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class MainActivity extends Activity implements MobileTransferController.Listener {
+public final class MainActivity extends Activity implements MobileTransferController.Listener, SecureDiscovery.Listener {
     private static final int PICK_FILES = 201;
     private static final int PICK_FOLDER = 202;
+    private static final int SCANDIT_QR_SCAN = 203;
     private final List<Uri> selectedFiles = new ArrayList<>();
+    private final List<SecureDiscovery.DiscoveredDevice> nearbyDevices = new ArrayList<>();
     private PeerStore peers;
     private CryptoEngine.Identity identity;
     private MobileTransferController transfers;
+    private SecureDiscovery discovery;
     private Spinner peerSpinner;
+    private Spinner nearbySpinner;
     private TextView fileSummary;
     private TextView peerList;
+    private TextView discoveryStatus;
     private TextView relayStatus;
     private TextView activity;
     private ProgressBar progress;
@@ -57,13 +62,21 @@ public final class MainActivity extends Activity implements MobileTransferContro
             identity = new IdentityStore(this).loadOrCreate();
             peers = new PeerStore(this);
             String relayUrl = getPreferences(MODE_PRIVATE).getString("relay_url", "wss://relay.example.airvault.invalid");
-            transfers = new MobileTransferController(this, relayUrl, identity, peers, this);
+            try {
+                transfers = new MobileTransferController(this, relayUrl, identity, peers, this);
+            } catch (IllegalArgumentException invalidSavedRelay) {
+                relayUrl = "wss://relay.example.airvault.invalid";
+                getPreferences(MODE_PRIVATE).edit().remove("relay_url").apply();
+                transfers = new MobileTransferController(this, relayUrl, identity, peers, this);
+            }
             setContentView(buildInterface(relayUrl));
             transfers.connect();
+            discovery = new SecureDiscovery(this, identity, this);
+            discovery.start();
         } catch (Exception error) {
             new AlertDialog.Builder(this)
                     .setTitle("AirVault could not start")
-                    .setMessage("The protected device identity could not be loaded. Android security storage may be unavailable.")
+                    .setMessage("The protected device identity or saved device list could not be loaded. Android security storage may be unavailable.")
                     .setPositiveButton("Close", (_dialog, _which) -> finish())
                     .setCancelable(false)
                     .show();
@@ -71,14 +84,25 @@ public final class MainActivity extends Activity implements MobileTransferContro
     }
 
     @Override protected void onDestroy() {
+        if (discovery != null) discovery.stop();
         if (transfers != null) transfers.disconnect();
         super.onDestroy();
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == SCANDIT_QR_SCAN) {
+            if (resultCode == RESULT_OK && data != null && pendingAuthorizationTransfer != null) {
+                String payload = data.getStringExtra(ScanditQrScanActivity.EXTRA_QR_PAYLOAD);
+                if (payload != null) authorizePendingTransfer(payload);
+            } else if (data != null && data.getStringExtra("error") != null) {
+                toast(data.getStringExtra("error") + "; using the compatibility scanner");
+                startZxingQrScanner();
+            }
+            return;
+        }
         IntentResult scan = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
         if (scan != null && scan.getContents() != null) {
-            if (pendingAuthorizationTransfer != null) transfers.acceptIncoming(pendingAuthorizationTransfer, scan.getContents());
+            authorizePendingTransfer(scan.getContents());
             return;
         }
         super.onActivityResult(requestCode, resultCode, data);
@@ -193,6 +217,19 @@ public final class MainActivity extends Activity implements MobileTransferContro
         peersCard.addView(peerList);
         refreshPeers();
 
+        LinearLayout discoveryCard = card();
+        discoveryCard.addView(sectionTitle("3  Secure nearby discovery"));
+        discoveryCard.addView(text("Signed local beacons help you find nearby AirVault devices. Nothing is saved until you choose it.", 12, Color.rgb(139, 160, 186)));
+        nearbySpinner = new Spinner(this);
+        nearbySpinner.setBackgroundColor(Color.rgb(19, 38, 59));
+        discoveryStatus = text("Searching the local network…", 12, Color.rgb(173, 192, 213));
+        Button saveNearby = button("Save selected nearby device", false);
+        saveNearby.setOnClickListener(_view -> saveSelectedNearbyDevice());
+        discoveryCard.addView(nearbySpinner, match(dp(52)));
+        discoveryCard.addView(saveNearby);
+        discoveryCard.addView(discoveryStatus);
+        refreshNearbyDevices();
+
         if (content.getOrientation() == LinearLayout.HORIZONTAL) {
             content.addView(sendCard, weighted());
             content.addView(peersCard, weighted());
@@ -201,6 +238,7 @@ public final class MainActivity extends Activity implements MobileTransferContro
             content.addView(peersCard);
         }
         root.addView(content);
+        root.addView(discoveryCard);
 
         LinearLayout activityCard = card();
         activityCard.addView(label("TRANSFER ACTIVITY"));
@@ -279,11 +317,7 @@ public final class MainActivity extends Activity implements MobileTransferContro
                     .setTitle("Authorize incoming transfer")
                     .setView(body)
                     .setPositiveButton("Verify", (_dialog, _which) -> transfers.acceptIncoming(transferId, pin.getText().toString()))
-                    .setNeutralButton("Scan QR", (_dialog, _which) -> new IntentIntegrator(this)
-                            .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
-                            .setPrompt("Scan the sender's AirVault QR code")
-                            .setBeepEnabled(false)
-                            .initiateScan())
+                    .setNeutralButton("Scan QR", (_dialog, _which) -> startQrScanner())
                     .setNegativeButton("Decline", (_dialog, _which) -> transfers.rejectIncoming(transferId))
                     .show();
         });
@@ -291,6 +325,7 @@ public final class MainActivity extends Activity implements MobileTransferContro
 
     @Override public void onManifestReview(String transferId, JSONArray manifest, long totalBytes, int executableWarnings) {
         runOnUiThread(() -> {
+            if (transferId.equals(pendingAuthorizationTransfer)) pendingAuthorizationTransfer = null;
             StringBuilder files = new StringBuilder();
             try {
                 for (int i = 0; i < manifest.length(); i++) {
@@ -341,6 +376,81 @@ public final class MainActivity extends Activity implements MobileTransferContro
 
     @Override public void onError(String safeMessage) {
         runOnUiThread(() -> toast(safeMessage));
+    }
+
+    @Override public void onDiscovered(SecureDiscovery.DiscoveredDevice device) {
+        runOnUiThread(() -> {
+            for (int index = 0; index < nearbyDevices.size(); index++) {
+                SecureDiscovery.DiscoveredDevice existing = nearbyDevices.get(index);
+                if (existing.deviceId.equals(device.deviceId)) {
+                    if (existing.publicKey.equals(device.publicKey)) nearbyDevices.set(index, device);
+                    refreshNearbyDevices();
+                    return;
+                }
+            }
+            nearbyDevices.add(device);
+            refreshNearbyDevices();
+        });
+    }
+
+    @Override public void onDiscoveryWarning(String message) {
+        runOnUiThread(() -> {
+            if (discoveryStatus != null && nearbyDevices.isEmpty()) discoveryStatus.setText(message);
+        });
+    }
+
+    private void refreshNearbyDevices() {
+        if (nearbySpinner == null || discoveryStatus == null) return;
+        List<String> labels = new ArrayList<>();
+        labels.add("Choose a nearby device");
+        for (SecureDiscovery.DiscoveredDevice device : nearbyDevices) {
+            labels.add(device.deviceId);
+        }
+        nearbySpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, labels));
+        discoveryStatus.setText(nearbyDevices.isEmpty()
+                ? "Searching the local network…"
+                : nearbyDevices.size() + " valid signed nearby device(s) found");
+    }
+
+    private void saveSelectedNearbyDevice() {
+        int position = nearbySpinner == null ? 0 : nearbySpinner.getSelectedItemPosition();
+        if (position <= 0 || position > nearbyDevices.size()) {
+            toast("Choose a nearby device to save");
+            return;
+        }
+        SecureDiscovery.DiscoveredDevice device = nearbyDevices.get(position - 1);
+        try {
+            peers.save(device.deviceId, "Nearby " + device.deviceId.substring(device.deviceId.length() - 5));
+            peers.pin(device.deviceId, device.publicKey);
+            refreshPeers();
+            toast("Nearby device saved with its signed identity key");
+        } catch (Exception error) {
+            toast(error.getMessage());
+        }
+    }
+
+    private void startQrScanner() {
+        if (ScanditQrScanActivity.isConfigured()) {
+            startActivityForResult(new Intent(this, ScanditQrScanActivity.class), SCANDIT_QR_SCAN);
+        } else {
+            startZxingQrScanner();
+        }
+    }
+
+    private void startZxingQrScanner() {
+        new IntentIntegrator(this)
+                .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
+                .setPrompt("Scan the sender's AirVault QR code")
+                .setBeepEnabled(false)
+                .initiateScan();
+    }
+
+    private void authorizePendingTransfer(String authorization) {
+        if (pendingAuthorizationTransfer == null) {
+            toast("The transfer authorization request has expired");
+            return;
+        }
+        transfers.acceptIncoming(pendingAuthorizationTransfer, authorization);
     }
 
     private LinearLayout card() {

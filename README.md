@@ -31,7 +31,7 @@ AirVault is an open-source, cross-platform file-transfer application for Windows
 
 Android uses the system document picker and Storage Access Framework, so AirVault does not request broad storage access. The receiver sees a security-checked manifest before choosing a destination. Every completed file is compared with the sender's SHA-256 commitment.
 
-The Android app requires Android 13 (API 33) or newer because AirVault relies on the platform Ed25519 and X25519 implementations.
+The Android app supports Android 7.0 (API 24) and newer. AirVault uses the same standard Ed25519 and X25519 PEM formats on Android and desktop; CI verifies an interoperability vector and installs and cold-starts the generated APK on both API 24 and a current Android image.
 
 ## Security architecture
 
@@ -48,7 +48,7 @@ The Android app requires Android 13 (API 33) or newer because AirVault relies on
 | Replay resistance | Expiring signed offers, timestamps, random challenges, one-time relay registration nonces, and strict chunk indexes |
 | Safe receive path | Path traversal/reserved-name validation, duplicate detection, file-count and 100 GiB limits, temporary files, SHA-256 verification, and explicit approval |
 | Malware scanning | Microsoft Defender on Windows or ClamAV on Linux when available; cryptographic verification always runs |
-| Local discovery | Signed multicast beacons are accepted only for already-saved IDs and never create trust automatically |
+| Local discovery | Signed multicast beacons are fingerprint-checked before display; a nearby device is saved and its identity key pinned only after explicit user selection |
 | Relay privacy | TLS protects routing traffic; application-layer E2EE protects manifests and file bytes |
 
 <p align="center"><img src="docs/images/handshake.svg" width="980" alt="AirVault authenticated E2EE handshake"></p>
@@ -81,7 +81,7 @@ sudo apt install ./AirVault-*-linux-x64.deb
 
 ### Android phones and tablets
 
-1. On an Android 13 or newer device, download `AirVault-<version>-android.apk` from [Releases](https://github.com/YanagiKH/AirVault/releases).
+1. On an Android 7.0 or newer device, download `AirVault-<version>-android.apk` from [Releases](https://github.com/YanagiKH/AirVault/releases).
 2. Verify its checksum and signing certificate fingerprint against the release notes.
 3. Allow installation from the browser or file manager used to open the APK.
 4. Install it, then restore the “install unknown apps” setting to its previous value.
@@ -89,6 +89,8 @@ sudo apt install ./AirVault-*-linux-x64.deb
 Google Play distribution can use the same Android App Bundle configuration; the repository release workflow publishes an APK for direct installation.
 
 An asset ending in `-android-debug.apk` uses the isolated `.debug` application ID and a CI debug certificate. It is installable for testing but is not a production update. Production APKs omit the `-debug` suffix and require the protected signing configuration in [docs/INSTALLATION.md](docs/INSTALLATION.md).
+
+AirVault uses Scandit Barcode Capture for a QR-only authorization scanner when `SCANDIT_LICENSE_KEY` is configured at build time. Public or developer builds without a Scandit license automatically retain the built-in QR compatibility scanner, so missing commercial credentials never prevent startup or PIN/QR authorization.
 
 ### Build the desktop application from source
 
@@ -111,7 +113,7 @@ npm run package:linux -w @airvault/desktop
 
 ### Build Android from source
 
-Requirements: JDK 17, Android SDK 36, Android Build Tools, and Gradle 9.5.
+Requirements: JDK 17, Android SDK 36, Android Build Tools, and Gradle 9.5. A Scandit license is optional for source builds; set `SCANDIT_LICENSE_KEY` to enable the Scandit QR scanner.
 
 ```bash
 gradle -p apps/android assembleDebug

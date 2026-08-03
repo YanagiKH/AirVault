@@ -44,9 +44,9 @@ There is no automatic key replacement.
 
 ## Secure local discovery
 
-Desktop clients send small signed multicast beacons on the local network. A beacon includes only the device ID, public identity key, timestamp, and random nonce. AirVault verifies the signature and fingerprint before processing it.
+Desktop and Android clients send small signed multicast beacons on the local network. A beacon includes only the device ID, public identity key, timestamp, and random nonce. AirVault verifies the signature, fingerprint, timestamp, and replay nonce before displaying or processing it.
 
-Discovery does not create a saved device, does not pin an unverified key, and does not bypass PIN/QR authorization. Only already-saved IDs can be marked online. A conflicting key for an already-pinned ID triggers a security alert.
+Discovery never creates trust automatically and never bypasses PIN/QR authorization. Desktop marks an already-saved ID online only after validation. Android may list a validated nearby ID, but the user must explicitly select “Save”; only then is the advertised full identity key pinned. A conflicting key for an already-pinned ID is rejected.
 
 Local discovery exposes the device ID and public key to systems on the local subnet. Block UDP port 53545 or disable multicast at the network layer when this presence metadata is unacceptable.
 

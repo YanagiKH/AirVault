@@ -22,7 +22,7 @@ The root `package.json` version is the repository release version. A release-rel
 | TypeScript packages | Node.js 22+, npm 10+ |
 | Windows desktop | Windows runner, Electron/electron-builder prerequisites |
 | Linux desktop | Ubuntu 24.04+, FUSE for AppImage execution |
-| Android | Android 13+ device; JDK 17, Android SDK/Build Tools 36, Gradle 9.5 for source builds |
+| Android | Android 7.0+ device; JDK 17, Android SDK/Build Tools 36, Gradle 9.5 for source builds |
 | Native core | CMake 3.22+, C++20 compiler, OpenSSL 3 development package |
 
 ## Android release signing
@@ -47,6 +47,18 @@ gradle -p apps/android assembleRelease \
 Back up the keystore offline. Losing it prevents users from installing updates over an existing APK. A changed certificate must be treated as a security event.
 
 The workflow accepts either all four Android signing secrets or none. A partial configuration is rejected. When none are configured, CI produces an installable `-android-debug.apk` validation artifact instead of pretending that the APK is production-signed. Debug-signed APKs are for testing only, use the `.debug` application ID, and must not be distributed as production updates.
+
+## Scandit QR scanning
+
+AirVault integrates Scandit Barcode Capture 8.5.2 and enables only the QR symbology used by the authorization protocol. Configure the protected `SCANDIT_LICENSE_KEY` secret in the GitHub `release` environment (or export the same variable locally) to build with Scandit enabled:
+
+```bash
+SCANDIT_LICENSE_KEY='your-scandit-license' gradle -p apps/android assembleDebug
+```
+
+Scandit license keys are app-specific and must never be committed. When the variable is absent, AirVault automatically uses its bundled QR compatibility scanner. Both paths validate the `airvault://accept` payload before submitting authorization, and the absence of a Scandit key does not affect app startup.
+
+Every CI debug APK is installed and cold-started on Android API 24 and a current API image. The release workflow separately installs and cold-starts the exact APK that it uploads to GitHub Releases; its UI hierarchy, generated device ID, foreground activity, process lifetime, signature, screenshot, and crash log are retained as workflow evidence.
 
 ## Windows code signing
 

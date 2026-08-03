@@ -149,7 +149,7 @@ public final class RelayClient {
         if (uri.getFragment() != null) throw new IllegalArgumentException("Relay URL must not include a fragment");
 
         String host = uri.getHost();
-        if (host == null || host.isBlank()) throw new IllegalArgumentException("Relay URL host is required");
+        if (host == null || host.trim().isEmpty()) throw new IllegalArgumentException("Relay URL host is required");
         String normalizedHost = host.toLowerCase(Locale.US);
         if (normalizedHost.equals("localhost")
                 || normalizedHost.endsWith(".localhost")

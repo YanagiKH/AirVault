@@ -71,4 +71,15 @@ public final class CryptoEngineTest {
         assertEquals("{\"__proto__\":{\"polluted\":true},\"safe\":1}", canonical);
         assertFalse(canonical.isEmpty());
     }
+
+    @Test public void androidCryptoMatchesDesktopEd25519PemVector() throws Exception {
+        String publicKey = "-----BEGIN PUBLIC KEY-----\n"
+                + "MCowBQYDK2VwAyEAlh0fZ1Xz522Hb/Dyba55CUl16iCPFhGBB+ALkP+9scs=\n"
+                + "-----END PUBLIC KEY-----\n";
+        String message = "{\"platform\":\"desktop\",\"version\":1}";
+        String signature = "iFQgxZ5XBaCEnQBMLP_HB6R4ojKUHvaL2WyWv-qOcKnEKXbL6kQgBXs1VXd_Kn8eARkpJYIzJp0rys-4ttNuCA";
+
+        assertEquals("AV-BZ2AN-6DHIE-TKE2H-RLNJS", CryptoEngine.deviceIdFromPublicKey(publicKey));
+        assertTrue(CryptoEngine.verify(publicKey, message, signature));
+    }
 }

@@ -135,13 +135,14 @@ jobs:
     name: Android APK
     needs: validate-tag
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 55
     environment: release
     env:
       KEYSTORE_BASE64: ${{ secrets.AIRVAULT_ANDROID_KEYSTORE_BASE64 }}
       ORG_GRADLE_PROJECT_AIRVAULT_KEYSTORE_PASSWORD: ${{ secrets.AIRVAULT_ANDROID_KEYSTORE_PASSWORD }}
       ORG_GRADLE_PROJECT_AIRVAULT_KEY_ALIAS: ${{ secrets.AIRVAULT_ANDROID_KEY_ALIAS }}
       ORG_GRADLE_PROJECT_AIRVAULT_KEY_PASSWORD: ${{ secrets.AIRVAULT_ANDROID_KEY_PASSWORD }}
+      SCANDIT_LICENSE_KEY: ${{ secrets.SCANDIT_LICENSE_KEY }}
       RELEASE_VERSION: ${{ needs.validate-tag.outputs.version }}
     steps:
       - name: Check out source
@@ -192,12 +193,39 @@ jobs:
               -PAIRVAULT_VERSION_NAME="$VERSION" \
               -PAIRVAULT_VERSION_CODE="$GITHUB_RUN_NUMBER"
             cp apps/android/app/build/outputs/apk/release/app-release.apk "release/AirVault-$VERSION-android.apk"
+            echo "AIRVAULT_RELEASE_APK=release/AirVault-$VERSION-android.apk" >> "$GITHUB_ENV"
+            echo "AIRVAULT_RELEASE_PACKAGE=io.airvault.mobile" >> "$GITHUB_ENV"
           else
             gradle -p apps/android clean lintDebug testDebugUnitTest assembleDebug --no-daemon \
               -PAIRVAULT_VERSION_NAME="$VERSION" \
               -PAIRVAULT_VERSION_CODE="$GITHUB_RUN_NUMBER"
             cp apps/android/app/build/outputs/apk/debug/app-debug.apk "release/AirVault-$VERSION-android-debug.apk"
+            echo "AIRVAULT_RELEASE_APK=release/AirVault-$VERSION-android-debug.apk" >> "$GITHUB_ENV"
+            echo "AIRVAULT_RELEASE_PACKAGE=io.airvault.mobile.debug" >> "$GITHUB_ENV"
           fi
+      - name: Enable KVM access
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and cold-start the exact release APK
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 24
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/android-emulator-smoke.sh "$AIRVAULT_RELEASE_APK" "$AIRVAULT_RELEASE_PACKAGE" android-release-emulator-evidence
+      - name: Upload release emulator evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-release-emulator
+          path: android-release-emulator-evidence
+          if-no-files-found: warn
       - name: Upload Android package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

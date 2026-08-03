@@ -9,7 +9,7 @@ AirVault separates cryptographic policy, endpoint user interfaces, native defens
 | TypeScript protocol package | Canonical serialization, identity fingerprints, signed handshake, key derivation, AEAD, manifest rules |
 | Electron main process | Private-key access, filesystem access, local discovery, relay connection, transfer state machine |
 | Electron renderer | Sandboxed user interface with a narrow context-bridge API and strict Content Security Policy |
-| Java Android client | Keystore-protected identity, Storage Access Framework I/O, QR scanning, E2EE transfer state machine |
+| Java Android client | Android 7+ Keystore-protected identity, signed nearby discovery, Scandit QR-only scanning with credential-free fallback, Storage Access Framework I/O, E2EE transfer state machine |
 | C++ native core | OpenSSL hashing, secure zeroing, constant-time comparison, bounded binary frame parsing, C API |
 | Relay | Authenticated device registry and content-blind routing with no transfer persistence |
 

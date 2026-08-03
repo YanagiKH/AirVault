@@ -4,27 +4,35 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import org.bouncycastle.crypto.AsymmetricCipherKeyPair;
+import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
+import org.bouncycastle.crypto.params.Ed25519KeyGenerationParameters;
+import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters;
+import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
+import org.bouncycastle.crypto.params.X25519KeyGenerationParameters;
+import org.bouncycastle.crypto.params.X25519PrivateKeyParameters;
+import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
+import org.bouncycastle.crypto.agreement.X25519Agreement;
+import org.bouncycastle.crypto.generators.Ed25519KeyPairGenerator;
+import org.bouncycastle.crypto.generators.X25519KeyPairGenerator;
+import org.bouncycastle.crypto.signers.Ed25519Signer;
+import org.bouncycastle.crypto.util.PrivateKeyFactory;
+import org.bouncycastle.crypto.util.PrivateKeyInfoFactory;
+import org.bouncycastle.crypto.util.PublicKeyFactory;
+import org.bouncycastle.crypto.util.SubjectPublicKeyInfoFactory;
+
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
-import java.security.KeyFactory;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
-import java.security.PrivateKey;
-import java.security.PublicKey;
 import java.security.SecureRandom;
-import java.security.Signature;
-import java.security.spec.PKCS8EncodedKeySpec;
-import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 
 import javax.crypto.Cipher;
-import javax.crypto.KeyAgreement;
 import javax.crypto.Mac;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -77,9 +85,11 @@ public final class CryptoEngine {
     }
 
     public static Identity createIdentity() throws GeneralSecurityException {
-        KeyPair pair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
-        String publicPem = pem("PUBLIC KEY", pair.getPublic().getEncoded());
-        return new Identity(deviceIdFromPublicKey(publicPem), publicPem, pem("PRIVATE KEY", pair.getPrivate().getEncoded()));
+        Ed25519KeyPairGenerator generator = new Ed25519KeyPairGenerator();
+        generator.init(new Ed25519KeyGenerationParameters(RANDOM));
+        AsymmetricCipherKeyPair pair = generator.generateKeyPair();
+        String publicPem = publicPem(pair.getPublic());
+        return new Identity(deviceIdFromPublicKey(publicPem), publicPem, privatePem(pair.getPrivate()));
     }
 
     public static String deviceIdFromPublicKey(String publicKeyPem) throws GeneralSecurityException {
@@ -94,7 +104,7 @@ public final class CryptoEngine {
             throws GeneralSecurityException, JSONException {
         String normalizedReceiver = receiverId.trim().toUpperCase(Locale.US);
         if (!normalizedReceiver.matches("^AV-[A-Z2-7]{5}(?:-[A-Z2-7]{5}){3}$")) throw new GeneralSecurityException("Invalid AirVault device ID");
-        KeyPair ephemeral = KeyPairGenerator.getInstance("X25519").generateKeyPair();
+        AsymmetricCipherKeyPair ephemeral = generateX25519KeyPair();
         long now = System.currentTimeMillis();
         String pin = String.format(Locale.US, "%06d", RANDOM.nextInt(1_000_000));
         String qrSecret = randomBase64Url(32);
@@ -104,7 +114,7 @@ public final class CryptoEngine {
                 .put("senderId", identity.deviceId)
                 .put("receiverId", normalizedReceiver)
                 .put("senderIdentityPublicKey", identity.publicKeyPem)
-                .put("senderEphemeralPublicKey", pem("PUBLIC KEY", ephemeral.getPublic().getEncoded()))
+                .put("senderEphemeralPublicKey", publicPem(ephemeral.getPublic()))
                 .put("challenge", randomBase64Url(24))
                 .put("manifestDigest", hex(MessageDigest.getInstance("SHA-256").digest(canonical(manifest).getBytes(StandardCharsets.UTF_8))))
                 .put("createdAt", now)
@@ -115,7 +125,7 @@ public final class CryptoEngine {
                 .put("qrCommitment", hmacBase64Url(qrSecret, "airvault:qr:" + transcript));
         JSONObject offer = copy(unsigned).put("signature", sign(identity.privateKeyPem, canonical(unsigned)));
         String qr = "airvault://accept?v=1&transfer=" + offer.getString("transferId") + "&secret=" + qrSecret;
-        return new OfferBundle(offer, pin, qrSecret, qr, pem("PRIVATE KEY", ephemeral.getPrivate().getEncoded()), manifest);
+        return new OfferBundle(offer, pin, qrSecret, qr, privatePem(ephemeral.getPrivate()), manifest);
     }
 
     public static void verifyOffer(JSONObject offer, String expectedReceiverId) throws GeneralSecurityException, JSONException {
@@ -135,10 +145,16 @@ public final class CryptoEngine {
 
     public static byte[] deriveSessionKey(String localPrivatePem, String remotePublicPem, JSONObject offer, String authorization)
             throws GeneralSecurityException, JSONException {
-        KeyAgreement agreement = KeyAgreement.getInstance("X25519");
-        agreement.init(privateKey("X25519", localPrivatePem));
-        agreement.doPhase(publicKey("X25519", remotePublicPem), true);
-        byte[] shared = agreement.generateSecret();
+        AsymmetricKeyParameter privateKey = parsePrivateKey(localPrivatePem);
+        AsymmetricKeyParameter publicKey = parsePublicKey(remotePublicPem);
+        if (!(privateKey instanceof X25519PrivateKeyParameters)
+                || !(publicKey instanceof X25519PublicKeyParameters)) {
+            throw new GeneralSecurityException("Invalid X25519 session key");
+        }
+        X25519Agreement agreement = new X25519Agreement();
+        agreement.init(privateKey);
+        byte[] shared = new byte[agreement.getAgreementSize()];
+        agreement.calculateAgreement(publicKey, shared, 0);
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         digest.update("AirVault/v1/session\0".getBytes(StandardCharsets.UTF_8));
         digest.update(canonical(copyWithout(offer, "signature")).getBytes(StandardCharsets.UTF_8));
@@ -165,8 +181,8 @@ public final class CryptoEngine {
         } else {
             throw new GeneralSecurityException("Incorrect PIN or QR authorization");
         }
-        KeyPair ephemeral = KeyPairGenerator.getInstance("X25519").generateKeyPair();
-        String ephemeralPublic = pem("PUBLIC KEY", ephemeral.getPublic().getEncoded());
+        AsymmetricCipherKeyPair ephemeral = generateX25519KeyPair();
+        String ephemeralPublic = publicPem(ephemeral.getPublic());
         JSONObject proofObject = new JSONObject()
                 .put("offer", copyWithout(offer, "signature"))
                 .put("receiverEphemeralPublicKey", ephemeralPublic);
@@ -181,7 +197,7 @@ public final class CryptoEngine {
                 .put("acceptedAt", System.currentTimeMillis());
         JSONObject accept = copy(unsigned).put("signature", sign(receiver.privateKeyPem, canonical(unsigned)));
         byte[] session = deriveSessionKey(
-                pem("PRIVATE KEY", ephemeral.getPrivate().getEncoded()),
+                privatePem(ephemeral.getPrivate()),
                 offer.getString("senderEphemeralPublicKey"), offer, authorization);
         return new AcceptBundle(accept, session);
     }
@@ -203,7 +219,9 @@ public final class CryptoEngine {
         if (!verify(receiverPublicKey, canonical(copyWithout(accept, "signature")), accept.getString("signature"))) {
             throw new GeneralSecurityException("Invalid receiver signature");
         }
-        if (Math.abs(System.currentTimeMillis() - accept.getLong("acceptedAt")) > 300_000L) {
+        long now = System.currentTimeMillis();
+        long acceptedAt = accept.getLong("acceptedAt");
+        if (acceptedAt < now - 300_000L || acceptedAt > now + 300_000L) {
             throw new GeneralSecurityException("Stale receiver response");
         }
         String authorizationMethod = accept.getString("authorizationMethod");
@@ -244,10 +262,10 @@ public final class CryptoEngine {
         byte[] confirmationKey = java.util.Arrays.copyOfRange(sessionMaterial, 32, 64);
         String aadText = canonical(new JSONObject().put("version", 1).put("transferId", transferId).put("purpose", purpose).put("index", index));
         byte[] expectedNonce = java.util.Arrays.copyOf(hmac(confirmationKey, aadText.getBytes(StandardCharsets.UTF_8)), 12);
-        byte[] actualNonce = Base64.getUrlDecoder().decode(packet.getString("nonce"));
+        byte[] actualNonce = decodeBase64Url(packet.getString("nonce"));
         if (!MessageDigest.isEqual(expectedNonce, actualNonce)) throw new GeneralSecurityException("Invalid packet nonce");
-        byte[] ciphertext = Base64.getUrlDecoder().decode(packet.getString("ciphertext"));
-        byte[] tag = Base64.getUrlDecoder().decode(packet.getString("tag"));
+        byte[] ciphertext = decodeBase64Url(packet.getString("ciphertext"));
+        byte[] tag = decodeBase64Url(packet.getString("tag"));
         byte[] encryptedAndTag = new byte[ciphertext.length + tag.length];
         System.arraycopy(ciphertext, 0, encryptedAndTag, 0, ciphertext.length);
         System.arraycopy(tag, 0, encryptedAndTag, ciphertext.length, tag.length);
@@ -265,7 +283,7 @@ public final class CryptoEngine {
             JSONArray array = (JSONArray) value;
             List<String> items = new ArrayList<>();
             for (int i = 0; i < array.length(); i++) items.add(canonical(array.get(i)));
-            return "[" + String.join(",", items) + "]";
+            return "[" + join(items) + "]";
         }
         if (value instanceof JSONObject) {
             JSONObject object = (JSONObject) value;
@@ -275,23 +293,33 @@ public final class CryptoEngine {
             Collections.sort(keys);
             List<String> fields = new ArrayList<>();
             for (String key : keys) fields.add(JSONObject.quote(key) + ":" + canonical(object.get(key)));
-            return "{" + String.join(",", fields) + "}";
+            return "{" + join(fields) + "}";
         }
         throw new JSONException("Unsupported canonical JSON value");
     }
 
     public static String sign(String privatePem, String message) throws GeneralSecurityException {
-        Signature signature = Signature.getInstance("Ed25519");
-        signature.initSign(privateKey("Ed25519", privatePem));
-        signature.update(message.getBytes(StandardCharsets.UTF_8));
-        return base64Url(signature.sign());
+        AsymmetricKeyParameter key = parsePrivateKey(privatePem);
+        if (!(key instanceof Ed25519PrivateKeyParameters)) {
+            throw new GeneralSecurityException("Invalid Ed25519 private key");
+        }
+        byte[] bytes = message.getBytes(StandardCharsets.UTF_8);
+        Ed25519Signer signer = new Ed25519Signer();
+        signer.init(true, key);
+        signer.update(bytes, 0, bytes.length);
+        return base64Url(signer.generateSignature());
     }
 
     public static boolean verify(String publicPem, String message, String encodedSignature) throws GeneralSecurityException {
-        Signature signature = Signature.getInstance("Ed25519");
-        signature.initVerify(publicKey("Ed25519", publicPem));
-        signature.update(message.getBytes(StandardCharsets.UTF_8));
-        return signature.verify(Base64.getUrlDecoder().decode(encodedSignature));
+        AsymmetricKeyParameter key = parsePublicKey(publicPem);
+        if (!(key instanceof Ed25519PublicKeyParameters)) {
+            throw new GeneralSecurityException("Invalid Ed25519 public key");
+        }
+        byte[] bytes = message.getBytes(StandardCharsets.UTF_8);
+        Ed25519Signer signer = new Ed25519Signer();
+        signer.init(false, key);
+        signer.update(bytes, 0, bytes.length);
+        return signer.verifySignature(decodeBase64Url(encodedSignature));
     }
 
     private static byte[] hkdfSha256(byte[] ikm, byte[] salt, byte[] info, int length) throws GeneralSecurityException {
@@ -342,21 +370,53 @@ public final class CryptoEngine {
         return result;
     }
 
-    private static PrivateKey privateKey(String algorithm, String pem) throws GeneralSecurityException {
-        return KeyFactory.getInstance(algorithm).generatePrivate(new PKCS8EncodedKeySpec(readPem(pem)));
+    private static AsymmetricCipherKeyPair generateX25519KeyPair() {
+        X25519KeyPairGenerator generator = new X25519KeyPairGenerator();
+        generator.init(new X25519KeyGenerationParameters(RANDOM));
+        return generator.generateKeyPair();
     }
 
-    private static PublicKey publicKey(String algorithm, String pem) throws GeneralSecurityException {
-        return KeyFactory.getInstance(algorithm).generatePublic(new X509EncodedKeySpec(readPem(pem)));
+    private static AsymmetricKeyParameter parsePrivateKey(String pem) throws GeneralSecurityException {
+        try {
+            return PrivateKeyFactory.createKey(readPem(pem));
+        } catch (IOException | RuntimeException error) {
+            throw new GeneralSecurityException("Invalid private key", error);
+        }
+    }
+
+    private static AsymmetricKeyParameter parsePublicKey(String pem) throws GeneralSecurityException {
+        try {
+            return PublicKeyFactory.createKey(readPem(pem));
+        } catch (IOException | RuntimeException error) {
+            throw new GeneralSecurityException("Invalid public key", error);
+        }
+    }
+
+    private static String privatePem(AsymmetricKeyParameter key) throws GeneralSecurityException {
+        try {
+            return pem("PRIVATE KEY", PrivateKeyInfoFactory.createPrivateKeyInfo(key).getEncoded());
+        } catch (IOException | RuntimeException error) {
+            throw new GeneralSecurityException("Could not encode private key", error);
+        }
+    }
+
+    private static String publicPem(AsymmetricKeyParameter key) throws GeneralSecurityException {
+        try {
+            return pem("PUBLIC KEY", SubjectPublicKeyInfoFactory.createSubjectPublicKeyInfo(key).getEncoded());
+        } catch (IOException | RuntimeException error) {
+            throw new GeneralSecurityException("Could not encode public key", error);
+        }
     }
 
     private static byte[] readPem(String pem) {
         String encoded = pem.replaceAll("-----[^-]+-----", "").replaceAll("\\s", "");
-        return Base64.getDecoder().decode(encoded);
+        return org.bouncycastle.util.encoders.Base64.decode(encoded);
     }
 
     private static String pem(String type, byte[] encoded) {
-        return "-----BEGIN " + type + "-----\n" + Base64.getEncoder().encodeToString(encoded) + "\n-----END " + type + "-----\n";
+        return "-----BEGIN " + type + "-----\n"
+                + org.bouncycastle.util.encoders.Base64.toBase64String(encoded)
+                + "\n-----END " + type + "-----\n";
     }
 
     private static String randomBase64Url(int count) {
@@ -366,7 +426,34 @@ public final class CryptoEngine {
     }
 
     private static String base64Url(byte[] bytes) {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        return org.bouncycastle.util.encoders.Base64.toBase64String(bytes)
+                .replace('+', '-')
+                .replace('/', '_')
+                .replace("=", "");
+    }
+
+    private static byte[] decodeBase64Url(String value) throws GeneralSecurityException {
+        try {
+            if (value == null || !value.matches("^[A-Za-z0-9_-]*$")) {
+                throw new IllegalArgumentException("Invalid base64url text");
+            }
+            String standard = value.replace('-', '+').replace('_', '/');
+            int remainder = standard.length() % 4;
+            if (remainder == 1) throw new IllegalArgumentException("Invalid base64url length");
+            if (remainder > 0) standard += "====".substring(remainder);
+            return org.bouncycastle.util.encoders.Base64.decode(standard);
+        } catch (RuntimeException error) {
+            throw new GeneralSecurityException("Invalid base64url value", error);
+        }
+    }
+
+    private static String join(List<String> values) {
+        StringBuilder output = new StringBuilder();
+        for (int index = 0; index < values.size(); index++) {
+            if (index > 0) output.append(',');
+            output.append(values.get(index));
+        }
+        return output.toString();
     }
 
     private static String base32(byte[] input) {

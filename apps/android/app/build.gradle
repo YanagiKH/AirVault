@@ -2,17 +2,24 @@ plugins {
     id "com.android.application"
 }
 
+def scanditLicense = providers.gradleProperty("AIRVAULT_SCANDIT_LICENSE_KEY")
+        .orElse(providers.environmentVariable("SCANDIT_LICENSE_KEY"))
+        .getOrElse("")
+def scanditLicenseBase64 = java.util.Base64.getEncoder().encodeToString(
+        scanditLicense.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+
 android {
     namespace = "io.airvault.mobile"
     compileSdk = 36
 
     defaultConfig {
         applicationId = "io.airvault.mobile"
-        minSdk = 33
+        minSdk = 24
         targetSdk = 36
         versionCode = providers.gradleProperty("AIRVAULT_VERSION_CODE").getOrElse("1").toInteger()
         versionName = providers.gradleProperty("AIRVAULT_VERSION_NAME").getOrElse("0.1.0")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "SCANDIT_LICENSE_KEY_BASE64", "\"${scanditLicenseBase64}\"")
     }
 
     signingConfigs {
@@ -45,6 +52,9 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    buildFeatures {
+        buildConfig = true
+    }
     packaging {
         resources.excludes += ["META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*"]
     }
@@ -52,6 +62,9 @@ android {
 
 dependencies {
     implementation "com.squareup.okhttp3:okhttp:5.4.0"
+    implementation "org.bouncycastle:bcprov-jdk18on:1.85"
+    implementation "com.scandit.datacapture:core:8.5.2"
+    implementation "com.scandit.datacapture:barcode:8.5.2"
     implementation "com.google.zxing:core:3.5.4"
     implementation "com.journeyapps:zxing-android-embedded:4.3.0"
     implementation "androidx.documentfile:documentfile:1.1.0"

@@ -1,6 +1,6 @@
 {
   "name": "airvault",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Secure end-to-end encrypted file transfer for desktop and mobile devices",
   "license": "Apache-2.0",
