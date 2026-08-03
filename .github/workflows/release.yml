@@ -12,6 +12,7 @@ on:
       - "package-lock.json"
       - "scripts/set-release-version.mjs"
       - "scripts/set-release-version.test.mjs"
+      - "scripts/android-emulator-smoke.sh"
       - "apps/desktop/**"
       - "apps/android/**"
       - "packages/protocol/**"
