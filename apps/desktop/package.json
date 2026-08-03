@@ -14,8 +14,8 @@
     "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "npm run build && electron .",
-    "package:windows": "npm run build && electron-builder --win nsis --x64 --publish never",
-    "package:linux": "npm run build && electron-builder --linux AppImage deb --x64 --publish never"
+    "package:windows": "npm run build -w @airvault/protocol && npm run build && electron-builder --win nsis --x64 --publish never",
+    "package:linux": "npm run build -w @airvault/protocol && npm run build && electron-builder --linux AppImage deb --x64 --publish never"
   },
   "dependencies": {
     "@airvault/protocol": "0.1.0",
