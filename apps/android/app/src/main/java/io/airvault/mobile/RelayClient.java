@@ -2,6 +2,11 @@ package io.airvault.mobile;
 
 import org.json.JSONObject;
 
+import java.net.URI;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
 import java.security.SecureRandom;
 import java.util.concurrent.TimeUnit;
 
@@ -23,6 +28,9 @@ public final class RelayClient {
             .readTimeout(0, TimeUnit.SECONDS)
             .pingInterval(30, TimeUnit.SECONDS)
             .build();
+    private static final Set<String> ALLOWED_RELAY_HOSTS = new HashSet<>(Arrays.asList(
+            "relay.example.com"
+    ));
     private final CryptoEngine.Identity identity;
     private final Listener listener;
     private WebSocket socket;
@@ -114,8 +122,32 @@ public final class RelayClient {
     }
 
     private static String requireSecureUrl(String value) {
+        if (value == null) throw new IllegalArgumentException("Relay URL is required");
         String trimmed = value.trim();
-        if (!trimmed.startsWith("wss://")) throw new IllegalArgumentException("Android relays must use wss://");
-        return trimmed;
+        if (trimmed.isEmpty()) throw new IllegalArgumentException("Relay URL is required");
+
+        URI uri;
+        try {
+            uri = URI.create(trimmed);
+        } catch (IllegalArgumentException error) {
+            throw new IllegalArgumentException("Relay URL is invalid", error);
+        }
+
+        if (!"wss".equalsIgnoreCase(uri.getScheme())) {
+            throw new IllegalArgumentException("Android relays must use wss://");
+        }
+        if (uri.getUserInfo() != null) {
+            throw new IllegalArgumentException("Relay URL must not include user info");
+        }
+
+        String host = uri.getHost();
+        if (host == null || host.isEmpty()) {
+            throw new IllegalArgumentException("Relay URL host is required");
+        }
+        String normalizedHost = host.toLowerCase(Locale.US);
+        if (!ALLOWED_RELAY_HOSTS.contains(normalizedHost)) {
+            throw new IllegalArgumentException("Relay host is not authorized");
+        }
+        return uri.toString();
     }
 }
