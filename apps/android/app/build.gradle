@@ -62,7 +62,7 @@ android {
 
 dependencies {
     implementation "com.squareup.okhttp3:okhttp:5.4.0"
-    implementation "org.bouncycastle:bcprov-jdk18on:1.85"
+    implementation "org.bouncycastle:bcprov-jdk18on:1.85.2"
     implementation "com.scandit.datacapture:core:8.5.2"
     implementation "com.scandit.datacapture:barcode:8.5.2"
     implementation "com.google.zxing:core:3.5.4"
