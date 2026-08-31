@@ -1,4 +1,4 @@
-FROM node:26.5.1-alpine3.24 AS build
+FROM node:26.8.1-alpine3.24 AS build
 WORKDIR /src
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/protocol/package.json packages/protocol/package.json
@@ -9,7 +9,7 @@ COPY packages/protocol packages/protocol
 COPY services/relay services/relay
 RUN npm run build -w @airvault/protocol && npm run build -w @airvault/relay && npm prune --omit=dev
 
-FROM node:26.5.1-alpine3.24
+FROM node:26.8.1-alpine3.24
 ENV NODE_ENV=production AIRVAULT_RELAY_HOST=0.0.0.0 AIRVAULT_RELAY_PORT=8787 AIRVAULT_MAX_CONNECTIONS=1000
 WORKDIR /app
 USER node
